@@ -69,6 +69,9 @@ public:
     /// Notify that an update was cancelled.
     static void NotifyUpdateCancelled();
 
+    /// Check is file signature valid.
+    static bool SignatureValid(const std::wstring &filename, const std::string &signature);
+
     //@}
 
     /**
@@ -118,6 +121,13 @@ public:
         ms_cbUpdateCancelled = callback;
     }
 
+    /// Set the win_sparkle_signature_is_valid_t function
+    static void SetSignatureValidationCallback(win_sparkle_signature_is_valid_t callback)
+    {
+        CriticalSectionLocker lock(ms_csVars);
+        ms_cbSignatureIsValid = callback;
+    }
+
     //@}
 
 private:
@@ -132,6 +142,7 @@ private:
     static win_sparkle_did_find_update_callback_t     ms_cbDidFindUpdate;
     static win_sparkle_did_not_find_update_callback_t ms_cbDidNotFindUpdate;
     static win_sparkle_update_cancelled_callback_t    ms_cbUpdateCancelled;
+    static win_sparkle_signature_is_valid_t           ms_cbSignatureIsValid;
 };
 
 } // namespace winsparkle

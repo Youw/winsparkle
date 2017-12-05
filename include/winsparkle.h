@@ -378,6 +378,25 @@ typedef void (__cdecl *win_sparkle_update_cancelled_callback_t)();
 */
 WIN_SPARKLE_API void __cdecl win_sparkle_set_update_cancelled_callback(win_sparkle_update_cancelled_callback_t callback);
 
+/// Callback type for win_sparkle_signature_is_valid()
+typedef int(__cdecl *win_sparkle_signature_is_valid_t)(const wchar_t *filename, const char *signature_str);
+
+/**
+    Set callback to be called when download is done and signature validation is required.
+
+    If sparkle:dsaSignature attribute is set,
+    a signature validation algorithm is required,
+    as not provided by WinSparkle by default.
+
+    filename - name of the downloaded file.
+    signature_str - signature as provided by sparkle:dsaSignature attribute in appcast.
+
+    Callback should return non-zero value if signature is valid, or 0 otherwise.
+
+    @since TODO
+*/
+WIN_SPARKLE_API void __cdecl win_sparkle_set_signature_validation_callback(win_sparkle_signature_is_valid_t callback);
+
 //@}
 
 

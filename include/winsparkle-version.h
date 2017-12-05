@@ -51,7 +51,7 @@
 
 #define _WIN_SPARKLE_MAKE_STR(x) #x
 #define _WIN_SPARKLE_MAKE_VERSION_STR(a,b,c) \
-        _WIN_SPARKLE_MAKE_STR(a) "." _WIN_SPARKLE_MAKE_STR(b) "." _WIN_SPARKLE_MAKE_STR(c)
+        _WIN_SPARKLE_MAKE_STR(a) "." _WIN_SPARKLE_MAKE_STR(b) "." _WIN_SPARKLE_MAKE_STR(c) ".a"
 
 /**
     WinSparkle version as a string in the form of e.g. "0.1.3".

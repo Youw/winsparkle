@@ -37,6 +37,7 @@ win_sparkle_shutdown_request_callback_t    ApplicationController::ms_cbRequestSh
 win_sparkle_did_find_update_callback_t     ApplicationController::ms_cbDidFindUpdate = NULL;
 win_sparkle_did_not_find_update_callback_t ApplicationController::ms_cbDidNotFindUpdate = NULL;
 win_sparkle_update_cancelled_callback_t    ApplicationController::ms_cbUpdateCancelled = NULL;
+win_sparkle_signature_is_valid_t           ApplicationController::ms_cbSignatureIsValid = NULL;
 
 bool ApplicationController::IsReadyToShutdown()
 {
@@ -111,6 +112,22 @@ void ApplicationController::NotifyUpdateCancelled()
         {
             (*ms_cbUpdateCancelled)();
             return;
+        }
+    }
+}
+
+bool ApplicationController::SignatureValid(const std::wstring &filename, const std::string &signature)
+{
+    {
+        CriticalSectionLocker lock(ms_csVars);
+        if ( ms_cbSignatureIsValid )
+        {
+            return (*ms_cbSignatureIsValid)(filename.c_str(), signature.c_str()) != 0;
+        }
+        else
+        {
+            LogError("Signature check callback is not set");
+            return false;
         }
     }
 }

@@ -304,6 +304,15 @@ WIN_SPARKLE_API void __cdecl win_sparkle_set_update_cancelled_callback(win_spark
     CATCH_ALL_EXCEPTIONS
 }
 
+WIN_SPARKLE_API void __cdecl win_sparkle_set_signature_validation_callback(win_sparkle_signature_is_valid_t callback)
+{
+    try
+    {
+        ApplicationController::SetSignatureValidationCallback(callback);
+    }
+    CATCH_ALL_EXCEPTIONS
+}
+
 /*--------------------------------------------------------------------------*
                               Manual usage
  *--------------------------------------------------------------------------*/
