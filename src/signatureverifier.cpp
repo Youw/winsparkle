@@ -40,32 +40,6 @@
 
 #define SHA_DIGEST_LENGTH 20
 
-// Some declarations from OpenSSL
-extern "C"
-{
-
-struct SHA_CTX
-{
-    // Fields are not relevant. Only struct size.
-    unsigned char data[96];
-};
-typedef struct bio_st BIO;
-typedef struct dsa_st DSA;
-
-typedef int (*PDSA_verify)(int type, const unsigned char *dgst, int dgst_len,
-                           const unsigned char *sigbuf, int siglen, DSA *dsa);
-
-typedef BIO * (*PBIO_new_mem_buf)(const void *buf, int len);
-typedef int (*PBIO_free)(BIO *a);
-
-typedef DSA * (*PPEM_read_bio_DSA_PUBKEY)(BIO *bp, DSA **x, /*pem_password_cb*/void *cb, void *u);
-typedef void (*PDSA_free)(DSA *r);
-
-typedef unsigned long (*PERR_get_error)(void);
-typedef char * (*PERR_error_string)(unsigned long e, char *buf);
-
-}
-
 namespace winsparkle
 {
 
@@ -88,30 +62,40 @@ public:
     ~CFile()
     {
         if (f)
-            fclose(f);
+            ::fclose(f);
     }
 };
 
-class WinCryptRSAContext
+class WinCryptContext
 {
     HCRYPTPROV handle;
 
-    WinCryptRSAContext(const WinCryptRSAContext &);
-    WinCryptRSAContext &operator=(const WinCryptRSAContext &);
-public:
-    WinCryptRSAContext()
+    WinCryptContext(const WinCryptContext &);
+    WinCryptContext &operator=(const WinCryptContext &);
+
+    WinCryptContext(LPCTSTR provider, DWORD prov_type)
     {
-        if (!CryptAcquireContextW(&handle, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
+        if (!::CryptAcquireContext(&handle, NULL, provider, prov_type, CRYPT_VERIFYCONTEXT))
             throw Win32Exception("Failed to create crypto context");
     }
-
-    ~WinCryptRSAContext()
+public:
+    static WinCryptContext DSAContext()
     {
-        if (!CryptReleaseContext(handle, 0))
+        return WinCryptContext(MS_ENH_DSS_DH_PROV, PROV_DSS_DH);
+    }
+
+    static WinCryptContext RSAContext()
+    {
+        return WinCryptContext(MS_ENHANCED_PROV, PROV_RSA_FULL);
+    }
+
+    ~WinCryptContext()
+    {
+        if (!::CryptReleaseContext(handle, 0))
             LogError("Failed to release crypto context");
     }
 
-    operator HCRYPTPROV()
+    operator HCRYPTPROV() const
     {
         return handle;
     }
@@ -120,14 +104,13 @@ public:
 class WinCryptSHA1Hash
 {
     HCRYPTHASH handle;
-    friend class WinCryptRSAContext;
 
     WinCryptSHA1Hash(const WinCryptSHA1Hash&);
     WinCryptSHA1Hash& operator=(const WinCryptSHA1Hash &);
 public:
-    WinCryptSHA1Hash(WinCryptRSAContext &context)
+    WinCryptSHA1Hash(const WinCryptContext &ctx)
     {
-        if (!CryptCreateHash(HCRYPTPROV(context), CALG_SHA1, 0, 0, &handle))
+        if (!::CryptCreateHash(ctx, CALG_SHA1, 0, 0, &handle))
             throw Win32Exception("Failed to create crypto hash");
     }
 
@@ -135,256 +118,189 @@ public:
     {
         if (handle)
         {
-            if (!CryptDestroyHash(handle))
+            if (!::CryptDestroyHash(handle))
             {
                 LogError("Failed to destroy crypto hash");
             }
         }
     }
 
+    operator HCRYPTHASH() const
+    {
+        return handle;
+    }
+
     void hashData(const void *buffer, size_t buffer_len)
     {
-        if (!CryptHashData(handle, (CONST BYTE  *)buffer, buffer_len, 0))
+        if (!::CryptHashData(handle, (const BYTE  *)buffer, buffer_len, 0))
             throw Win32Exception("Failed to hash data");
     }
 
     void hashFile(const std::wstring &filename)
     {
-        CFile f (_wfopen(filename.c_str(), L"rb"));
+        CFile f (::_wfopen(filename.c_str(), L"rb"));
         if (!f)
-            throw std::runtime_error(WideToAnsi(L"Failed to open file " + filename));
+            throw std::runtime_error("Failed to open file " + WideToAnsi(filename));
 
         const int BUF_SIZE = 8192;
         unsigned char buf[BUF_SIZE];
 
-        while (size_t read_bytes = fread(buf, 1, BUF_SIZE, f))
+        while (size_t read_bytes = ::fread(buf, 1, BUF_SIZE, f))
         {
             hashData(buf, read_bytes);
         }
 
-        if (ferror(f))
-            throw std::runtime_error(WideToAnsi(L"Failed to read file " + filename));
+        if (::ferror(f))
+            throw std::runtime_error("Failed to read file " + WideToAnsi(filename));
     }
 
     void sha1Val(unsigned char(&sha1)[SHA_DIGEST_LENGTH])
     {
         DWORD hash_len = SHA_DIGEST_LENGTH;
-        if (!CryptGetHashParam(handle, HP_HASHVAL, sha1, &hash_len, 0))
+        if (!::CryptGetHashParam(handle, HP_HASHVAL, sha1, &hash_len, 0))
             throw Win32Exception("Failed to get SHA1 val");
     }
 
 };
 
-/**
-    Light-weight dynamic loader of OpenSSL library.
-    Loads only minimum required symbols, just enough to verify DSA SHA1 signature of the file.
- */
-class TinySSL
+std::string CryptStrToBin(const std::string &crypt_str, DWORD flags)
 {
-    TinySSL() {}
-public:
-    static TinySSL &inst()
+    DWORD bin_size = 0;
+
+    if (::CryptStringToBinaryA(&crypt_str[0], crypt_str.size(), flags, NULL, &bin_size, NULL, NULL))
     {
-        if (!ms_libeay32)
+        std::string bin (bin_size, '\0');
+        if (::CryptStringToBinaryA(&crypt_str[0], crypt_str.size(), flags, (BYTE *)&bin[0], &bin_size, NULL, NULL))
         {
-            ms_libeay32 = ::LoadLibraryW(L"libeay32.dll");
-            if (!ms_libeay32)
-                throw std::runtime_error("Failed to load libeay32.dll");
-
-            DSA_verify = (PDSA_verify)::GetProcAddress(ms_libeay32, "DSA_verify");
-            BIO_new_mem_buf = (PBIO_new_mem_buf)::GetProcAddress(ms_libeay32, "BIO_new_mem_buf");
-            BIO_free = (PBIO_free)::GetProcAddress(ms_libeay32, "BIO_free");
-            PEM_read_bio_DSA_PUBKEY = (PPEM_read_bio_DSA_PUBKEY)::GetProcAddress(ms_libeay32, "PEM_read_bio_DSA_PUBKEY");
-            DSA_free = (PDSA_free)::GetProcAddress(ms_libeay32, "DSA_free");
-            ERR_get_error = (PERR_get_error)::GetProcAddress(ms_libeay32, "ERR_get_error");
-            ERR_error_string = (PERR_error_string)::GetProcAddress(ms_libeay32, "ERR_error_string");
-
-            if (! (DSA_verify &&
-              BIO_new_mem_buf &&
-              BIO_free &&
-              PEM_read_bio_DSA_PUBKEY &&
-              DSA_free &&
-              ERR_get_error &&
-              ERR_error_string) )
-            {
-                CloseLib();
-                throw std::runtime_error("Failed to load libeay32.dll symbols");
-            }
-
-        }
-        static TinySSL instance;
-        return instance;
-    }
-
-    static void CloseLib()
-    {
-        if (ms_libeay32)
-        {
-            ::FreeLibrary(ms_libeay32);
-            ms_libeay32 = NULL;
+            return bin;
         }
     }
 
-    ~TinySSL()
-    {
-        CloseLib();
-    }
-
-    void SetDSAPubKey(const std::string &pem)
-    {
-        m_dsaPub.ReadFromPem(pem);
-    }
-
-    void VerifyDSASHA1Signature(const std::wstring &filename, const std::string &signature)
-    {
-        unsigned char sha1[SHA_DIGEST_LENGTH];
-
-        {
-            WinCryptRSAContext ctx;
-            // SHA1 of file
-            {
-                WinCryptSHA1Hash hash(ctx);
-                hash.hashFile(filename);
-                hash.sha1Val(sha1);
-            }
-            // SHA1 of SHA1 of file
-            {
-                WinCryptSHA1Hash hash(ctx);
-                hash.hashData(sha1, ARRAYSIZE(sha1));
-                hash.sha1Val(sha1);
-            }
-        }
-
-        DSAPub &pubKey(PubKey());
-
-        const int code = DSA_verify(0, sha1, ARRAYSIZE(sha1), (const unsigned char*)signature.c_str(), signature.size(), pubKey);
-
-        if (code == -1) // OpenSSL error
-            throw std::runtime_error(ERR_error_string(ERR_get_error(), nullptr));
-
-        if (code != 1)
-            throw std::runtime_error("DSA Signature not match!");
-    }
-
-private:
-    static HMODULE ms_libeay32;
-
-    static PDSA_verify DSA_verify;
-    static PBIO_new_mem_buf BIO_new_mem_buf;
-    static PBIO_free BIO_free;
-    static PPEM_read_bio_DSA_PUBKEY PEM_read_bio_DSA_PUBKEY;
-    static PDSA_free DSA_free;
-    static PERR_get_error ERR_get_error;
-    static PERR_error_string ERR_error_string;
-
-    class BIOWrap
-    {
-        BIO* bio = NULL;
-
-    public:
-        BIOWrap(const std::string &mem_buf)
-        {
-            bio = BIO_new_mem_buf(mem_buf.c_str(), int(mem_buf.size()));
-            if (!bio)
-                throw std::invalid_argument("Cannot set PEM key mem buffer");
-        }
-
-        operator BIO*()
-        {
-            return bio;
-        }
-
-        ~BIOWrap()
-        {
-            BIO_free(bio);
-        }
-
-    }; // BIOWrap
-
-    class DSAPub
-    {
-        DSA *dsa = NULL;
-
-    public:
-        DSAPub()
-        {
-        }
-
-        void ReadFromPem(const std::string &pem_key)
-        {
-            BIOWrap bio(pem_key);
-            if (!PEM_read_bio_DSA_PUBKEY(bio, &dsa, NULL, NULL))
-            {
-                throw std::invalid_argument("Cannot read DSA public key from PEM");
-            }
-        }
-
-        operator DSA*()
-        {
-            return dsa;
-        }
-
-        ~DSAPub()
-        {
-            if (dsa)
-                DSA_free(dsa);
-        }
-
-    }; // DSAWrap
-
-    DSAPub m_dsaPub;
-    DSAPub &PubKey()
-    {
-        if (static_cast<DSA*>(m_dsaPub) == NULL)
-        {
-            std::string pem = Settings::GetDSAPubKeyPem(); // side effect - it will call SignatureVerifier::SetDSAPubKeyPem
-            if (static_cast<DSA*>(m_dsaPub) == NULL) // usualy should not happen, but double check
-            {
-                m_dsaPub.ReadFromPem(pem);
-            }
-        }
-        return m_dsaPub;
-    }
-
-}; // TinySSL
-
-HMODULE TinySSL::ms_libeay32 = NULL;
-
-PDSA_verify TinySSL::DSA_verify = NULL;
-PBIO_new_mem_buf TinySSL::BIO_new_mem_buf = NULL;
-PBIO_free TinySSL::BIO_free = NULL;
-PPEM_read_bio_DSA_PUBKEY TinySSL::PEM_read_bio_DSA_PUBKEY = NULL;
-PDSA_free TinySSL::DSA_free = NULL;
-PERR_get_error TinySSL::ERR_get_error = NULL;
-PERR_error_string TinySSL::ERR_error_string = NULL;
+    throw Win32Exception("Failed to decode string to bin");
+}
 
 std::string Base64ToBin(const std::string &base64)
 {
-    DWORD nDestinationSize = 0;
-    std::string bin;
+    return CryptStrToBin(base64, CRYPT_STRING_BASE64);
+}
 
-    bool ok = false;
+std::string Base64HeaderToBin(const std::string &base64)
+{
+    return CryptStrToBin(base64, CRYPT_STRING_BASE64HEADER);
+}
 
-    if (CryptStringToBinaryA(&base64[0], base64.size(), CRYPT_STRING_BASE64, NULL, &nDestinationSize, NULL, NULL))
+std::string CryptDecodeObject(const std::string &obj, LPCSTR obj_type)
+{
+    const BYTE *der_data = (const BYTE *)&obj[0];
+    DWORD der_data_size = obj.size();
+
+    DWORD res_size = 0;
+
+    if (::CryptDecodeObjectEx(X509_ASN_ENCODING, obj_type, der_data, der_data_size, 0, NULL, NULL, &res_size))
     {
-        bin.resize(nDestinationSize);
-        if (CryptStringToBinaryA(&base64[0], base64.size(), CRYPT_STRING_BASE64, (BYTE *)&bin[0], &nDestinationSize, NULL, NULL))
+        std::string decoded(res_size, '\0');
+        if (::CryptDecodeObjectEx(X509_ASN_ENCODING, obj_type, der_data, der_data_size, 0, NULL, &decoded[0], &res_size))
         {
-            ok = true;
+            return decoded;
         }
     }
 
-    if (!ok)
-        throw std::runtime_error("Failed to decode base64 string");
+    throw "Failed to convert object";
+}
 
-    return bin;
+// return CERT_PUBLIC_KEY_INFO data
+std::string CryptDerToPubInfo(const std::string &der)
+{
+    try {
+        return CryptDecodeObject(der, X509_PUBLIC_KEY_INFO);
+    }
+    catch (const char *) {
+        throw Win32Exception("Failed to convert public key info");
+    }
+}
+
+std::string CryptDerToDSASignature(const std::string &der)
+{
+    try {
+        return CryptDecodeObject(der, X509_DSS_SIGNATURE);
+    }
+    catch (const char *) {
+        throw Win32Exception("Failed to convert DSA signature");
+    }
+}
+
+class WinCryptKey
+{
+    HCRYPTKEY handle;
+
+    WinCryptKey(const WinCryptKey &);
+    WinCryptKey &operator=(const WinCryptKey &);
+
+    WinCryptKey(HCRYPTKEY key_handle): handle(key_handle) { }
+
+public:
+    ~WinCryptKey()
+    {
+        if (handle)
+            if (!CryptDestroyKey(handle))
+                LogError("Failed to destroy crypt key");
+    }
+
+    operator HCRYPTKEY() const
+    {
+        return handle;
+    }
+
+    static WinCryptKey pubFromDSAPem(const WinCryptContext &ctx, const std::string &pem)
+    {
+        std::string dsa_pub_der = Base64HeaderToBin(pem);
+        std::string dsa_pub_data = CryptDerToPubInfo(dsa_pub_der);
+
+        PCERT_PUBLIC_KEY_INFO dsa_pub = reinterpret_cast<PCERT_PUBLIC_KEY_INFO>(&dsa_pub_data[0]);
+
+        HCRYPTKEY crypt_key;
+        if (!CryptImportPublicKeyInfo(ctx, X509_ASN_ENCODING, dsa_pub, &crypt_key))
+            throw Win32Exception("Failed to open public key");
+
+        return WinCryptKey(crypt_key);
+    }
+
+    static WinCryptKey pubFromDSAPem(const WinCryptContext &ctx)
+    {
+        return pubFromDSAPem(ctx, Settings::GetDSAPubKeyPem());
+    }
+};
+
+void VerifyDSASHA1Signature(const std::wstring &filename, const std::string &der_signature)
+{
+    unsigned char sha1[SHA_DIGEST_LENGTH];
+
+    const WinCryptContext &ctx (WinCryptContext::DSAContext());
+
+    // SHA1 of file
+    {
+        WinCryptSHA1Hash hash(ctx);
+        hash.hashFile(filename);
+        hash.sha1Val(sha1);
+    }
+    // SHA1 of SHA1 of file
+    WinCryptSHA1Hash hash(ctx);
+    hash.hashData(sha1, ARRAYSIZE(sha1));
+
+    const WinCryptKey &pub_key(WinCryptKey::pubFromDSAPem(ctx));
+
+    std::string signature = CryptDerToDSASignature(der_signature);
+
+    if (!CryptVerifySignature(hash, (const BYTE *)&signature[0], signature.size(), pub_key, NULL, 0))
+        throw Win32Exception("DSA Signature not match!");
 }
 
 } // anonynous
 
-void SignatureVerifier::SetDSAPubKeyPem(const std::string &pem)
+void SignatureVerifier::VerifyDSAPubKeyPem(const std::string &pem)
 {
-    TinySSL::inst().SetDSAPubKey(pem);
+    const WinCryptContext &ctx(WinCryptContext::DSAContext());
+    WinCryptKey::pubFromDSAPem(ctx, pem);
 }
 
 bool SignatureVerifier::DSASHA1SignatureValid(const std::wstring &filename, const std::string &signature_base64)
@@ -393,7 +309,7 @@ bool SignatureVerifier::DSASHA1SignatureValid(const std::wstring &filename, cons
     {
         if (signature_base64.size() == 0)
             throw std::runtime_error("Missing DSA signature!");
-        TinySSL::inst().VerifyDSASHA1Signature(filename, Base64ToBin(signature_base64));
+        VerifyDSASHA1Signature(filename, Base64ToBin(signature_base64));
         return true;
     }
     CATCH_ALL_EXCEPTIONS

@@ -23,7 +23,6 @@
  *
  */
 
-#include "appcontroller.h"
 #include "updatedownloader.h"
 #include "download.h"
 #include "settings.h"

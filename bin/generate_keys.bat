@@ -7,7 +7,7 @@ FOR %%i IN ("dsaparam.pem" "dsa_priv.pem" "dsa_pub.pem") DO (
   )
 )
 
-openssl dsaparam 4096 > dsaparam.pem
+openssl dsaparam 1024 > dsaparam.pem
 
 openssl gendsa dsaparam.pem -out dsa_priv.pem
 del /F /Q dsaparam.pem

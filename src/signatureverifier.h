@@ -35,8 +35,8 @@ namespace winsparkle
 class SignatureVerifier
 {
 public:
-    // Explicitly set public key to use for DSA signature verification
-    static void SetDSAPubKeyPem(const std::string &pem);
+    // Throws an exception if pem is not a valid DSA public key in PEM format
+    static void VerifyDSAPubKeyPem(const std::string &pem);
 
     // Verify DSA signature of SHA1 hash of the file. Equivalent to:
     // openssl dgst -sha1 -binary < filename | openssl dgst -sha1 -verify dsa_pub.pem -signature signature.bin
