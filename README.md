@@ -1,6 +1,12 @@
 [![Build status](https://ci.appveyor.com/api/projects/status/acsuqjheafef29m1?svg=true)](https://ci.appveyor.com/project/vslavik/winsparkle)
 [![Crowdin](https://d322cqt584bo4o.cloudfront.net/winsparkle/localized.png)](https://crowdin.com/project/winsparkle)
 
+ Disclaimer
+-----------
+This is fork of https://github.com/vslavik/winsparkle. The only purpose of this develoment - add signature verification to WinSparkle project.
+
+This branch implements callback based signature verification. You may want to check [openssl_dsa_verify](https://github.com/Youw/winsparkle/tree/openssl_dsa_verify) and [win_crypto_dsa_verify](https://github.com/Youw/winsparkle/tree/win_crypto_dsa_verify) branches, what suits your needs better.
+
  About
 -------
 
