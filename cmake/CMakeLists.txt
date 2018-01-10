@@ -35,10 +35,20 @@ set(INCLUDE_INSTALL_DIR "include")
 set(CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/${PROJECT_NAME}")
 set(CMAKE_DEBUG_POSTFIX "d")
 
-set(EXPAT_INCLUDE_DIRS "${ROOT_DIR}/3rdparty/expat/lib")
+set(EXPAT_INCLUDE_DIRS "${ROOT_DIR}/3rdparty/expat/expat/lib")
 
-# bundled expat
-add_subdirectory(expat)
+# bundled expat - using original project, maintained by expat developers
+set(BUILD_tools OFF CACHE BOOL "build the xmlwf tool for expat library")
+set(BUILD_examples OFF CACHE BOOL "build the examples for expat library")
+set(BUILD_tests OFF CACHE BOOL "build the tests for expat library")
+set(BUILD_shared OFF CACHE BOOL "build a shared expat library")
+set(BUILD_doc OFF CACHE BOOL "build man page for xmlwf")
+add_subdirectory(${ROOT_DIR}/3rdparty/expat/expat expat)
+unset(BUILD_tools CACHE)
+unset(BUILD_examples CACHE)
+unset(BUILD_tests CACHE)
+unset(BUILD_shared CACHE)
+unset(BUILD_doc CACHE)
 
 # bundled wxWidgets
 add_subdirectory(wxWidgets)
@@ -85,9 +95,9 @@ foreach(RESOURCE ${RESOURCES})
                              -o ${CMAKE_CURRENT_BINARY_DIR}/${RESOURCE}.o)
 endforeach()
 
-add_library(${PROJECT_NAME} SHARED ${SOURCES} $<TARGET_OBJECTS:wxWidgets> $<TARGET_OBJECTS:expat>)
+add_library(${PROJECT_NAME} SHARED ${SOURCES} $<TARGET_OBJECTS:wxWidgets>)
 
-target_link_libraries(${PROJECT_NAME} wininet version rpcrt4 comctl32)
+target_link_libraries(${PROJECT_NAME} wininet version rpcrt4 comctl32 expat)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
                       VERSION ${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}
@@ -116,4 +126,5 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
               ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
         DESTINATION "${CONFIG_INSTALL_DIR}")
 
-install(EXPORT ${PROJECT_NAME}-export DESTINATION "${CONFIG_INSTALL_DIR}" FILE ${PROJECT_NAME}Targets.cmake)
+# FIXME: expat add some dependency. Do we even need this?
+# install(EXPORT ${PROJECT_NAME}-export DESTINATION "${CONFIG_INSTALL_DIR}" FILE ${PROJECT_NAME}Targets.cmake)
