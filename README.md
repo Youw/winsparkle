@@ -5,7 +5,9 @@
 -----------
 This is fork of https://github.com/vslavik/winsparkle. The only purpose of this develoment - add signature verification to WinSparkle project.
 
-This branch implements callback based signature verification. You may want to check [openssl_dsa_verify](https://github.com/Youw/winsparkle/tree/openssl_dsa_verify) and [win_crypto_dsa_verify](https://github.com/Youw/winsparkle/tree/win_crypto_dsa_verify) branches, what suits your needs better.
+This branch implements callback based signature verification. You may want to check [win_crypto_dsa_verify](https://github.com/Youw/winsparkle/tree/win_crypto_dsa_verify) branch, if it suits your needs better.
+
+**NOTE**: Since [Fabruary 2 2018](https://github.com/vslavik/winsparkle/pull/157#event-1460756133), OpenSSL-based DSA signature verification is available in the [original WinSparkle repository](https://github.com/vslavik/winsparkle), so there is 99% chance you want to use it and not this version.
 
  About
 -------
